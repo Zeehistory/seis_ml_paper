@@ -9,7 +9,7 @@ import ast
 # -----------------------
 # CONFIG
 # -----------------------
-INPUT_CSV = "cv_ablation_results.csv"
+INPUT_CSV = "/orcd/home/002/zsyed/seis-paper/results/cv_ablation_results.csv"
 OUTDIR = "seis-paper/figures"
 os.makedirs(OUTDIR, exist_ok=True)
 
