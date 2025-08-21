@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import os, json, random
 import numpy as np
 import pandas as pd
@@ -118,6 +119,9 @@ def run_fold(train_idx, val_idx, fold, hidden_dim=256, dropout=0.3):
     # Track training curves
     train_losses, val_losses, val_accs, val_mccs, lrs = [], [], [], [], []
 
+    # Per-fold outputs for embedding plots
+    all_feats, all_y_true, all_y_pred, all_y_prob = [], [], [], []
+
     for epoch in range(1, num_epochs + 1):
         model.train()
         epoch_loss = 0
@@ -137,7 +141,6 @@ def run_fold(train_idx, val_idx, fold, hidden_dim=256, dropout=0.3):
 
         # Validation
         model.eval()
-        y_true, y_pred, y_prob, feats = [], [], [], []
         val_loss = 0
         with torch.no_grad():
             for Xb, yb in val_loader:
@@ -146,15 +149,15 @@ def run_fold(train_idx, val_idx, fold, hidden_dim=256, dropout=0.3):
                 val_loss += criterion(out, yb).item()
                 preds = out.argmax(1)
                 probs = torch.softmax(out, 1)[:,1]
-                y_true.extend(yb.cpu().numpy())
-                y_pred.extend(preds.cpu().numpy())
-                y_prob.extend(probs.cpu().numpy())
-                feats.append(feat.cpu().numpy())
+                all_y_true.extend(yb.cpu().numpy())
+                all_y_pred.extend(preds.cpu().numpy())
+                all_y_prob.extend(probs.cpu().numpy())
+                all_feats.append(feat.cpu().numpy())
         val_loss /= len(val_loader)
         val_losses.append(val_loss)
 
-        acc = accuracy_score(y_true, y_pred)
-        mcc = matthews_corrcoef(y_true, y_pred)
+        acc = accuracy_score(all_y_true, all_y_pred)
+        mcc = matthews_corrcoef(all_y_true, all_y_pred)
         val_accs.append(acc)
         val_mccs.append(mcc)
 
@@ -171,10 +174,10 @@ def run_fold(train_idx, val_idx, fold, hidden_dim=256, dropout=0.3):
                 break
 
     # Save per-fold predictions/features
-    np.save(RESULTS_DIR / f"y_true_fold{fold}.npy", np.array(y_true))
-    np.save(RESULTS_DIR / f"y_pred_fold{fold}.npy", np.array(y_pred))
-    np.save(RESULTS_DIR / f"y_proba_fold{fold}.npy", np.array(y_prob))
-    np.save(RESULTS_DIR / f"embeddings_fold{fold}.npy", np.vstack(feats))
+    np.save(RESULTS_DIR / f"y_true_fold{fold}.npy", np.array(all_y_true))
+    np.save(RESULTS_DIR / f"y_pred_fold{fold}.npy", np.array(all_y_pred))
+    np.save(RESULTS_DIR / f"y_proba_fold{fold}.npy", np.array(all_y_prob))
+    np.save(RESULTS_DIR / f"embeddings_fold{fold}.npy", np.vstack(all_feats))
 
     # Save training curves
     np.save(RESULTS_DIR / f"train_loss_fold{fold}.npy", np.array(train_losses))
@@ -184,10 +187,10 @@ def run_fold(train_idx, val_idx, fold, hidden_dim=256, dropout=0.3):
     np.save(RESULTS_DIR / f"lr_schedule_fold{fold}.npy", np.array(lrs))
 
     return {
-        "val_acc": acc, "bal_acc": balanced_accuracy_score(y_true, y_pred),
-        "mcc": mcc, "auc": roc_auc_score(y_true, y_prob),
-        "aucpr": average_precision_score(y_true, y_prob),
-        "report": classification_report(y_true, y_pred, digits=4)
+        "val_acc": acc, "bal_acc": balanced_accuracy_score(all_y_true, all_y_pred),
+        "mcc": mcc, "auc": roc_auc_score(all_y_true, all_y_prob),
+        "aucpr": average_precision_score(all_y_true, all_y_prob),
+        "report": classification_report(all_y_true, all_y_pred, digits=4)
     }
 
 # -------------------
@@ -218,6 +221,7 @@ def concat_folds(prefix, n_folds=5):
     arrs = [np.load(RESULTS_DIR / f"{prefix}_fold{i+1}.npy") for i in range(n_folds)]
     return np.concatenate(arrs, axis=0)
 
+# Save global aggregates
 for name in ["y_true","y_pred","y_proba","embeddings",
              "train_loss","val_loss","val_acc","val_mcc","lr_schedule"]:
     arr = concat_folds(name)
@@ -278,4 +282,4 @@ class_counts = dict(zip(*np.unique(y, return_counts=True)))
 with open(RESULTS_DIR / "class_distribution.json", "w") as f:
     json.dump(class_counts, f, indent=4)
 
-print("[INFO] All outputs saved for figures.")
+print("[INFO] All outputs saved for plots (training curves, confusion matrices, ROC/PR, CV results, radar plots, embeddings, baselines, statistics).")
